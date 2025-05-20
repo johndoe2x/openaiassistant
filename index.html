@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Assistant • OpenAI Key Chat</title>
+
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Highlight.js for syntax-highlighted code blocks -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+    />
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+      defer
+    ></script>
+
+    <style>
+      /* small entrance for cards */
+      @keyframes slideIn {
+        0% {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .slide-in {
+        animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      /* slide-over preview panel */
+      .panel-enter {
+        transform: translateX(100%);
+      }
+      .panel-open {
+        transform: translateX(0);
+      }
+    </style>
+
+    <script>
+      /* ---------- dark / light theme ---------- */
+      const pref = localStorage.getItem("theme");
+      if (pref) {
+        document.documentElement.classList.toggle("dark", pref === "dark");
+      } else if (matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
+      function toggleTheme() {
+        const v = document.documentElement.classList.toggle("dark");
+        localStorage.setItem("theme", v ? "dark" : "light");
+      }
+    </script>
+  </head>
+
+  <body
+    class="h-full bg-zinc-900 text-zinc-100 selection:bg-emerald-600 selection:text-white overflow-hidden"
+  >
+    <!-- ============ PREVIEW PANEL ============ -->
+    <aside
+      id="previewPanel"
+      class="fixed inset-y-0 right-0 w-full sm:w-[45vw] lg:w-[35vw] bg-zinc-800/90 backdrop-blur-lg shadow-2xl transform transition-transform duration-300 panel-enter hidden flex-col z-40"
+    >
+      <div
+        class="flex items-center justify-between p-4 border-b border-zinc-700"
+      >
+        <h3 class="text-lg font-semibold">Preview</h3>
+        <button
+          id="closePreviewBtn"
+          class="p-1 rounded hover:bg-zinc-700 focus:outline-none"
+        >
+          ✕
+        </button>
+      </div>
+      <iframe id="previewFrame" class="flex-1 w-full bg-white"></iframe>
+    </aside>
+
+    <!-- ============ MAIN APP ============ -->
+    <main class="min-h-full flex flex-col items-center justify-center p-6">
+      <!-- Header -->
+      <header class="flex w-full max-w-4xl items-center justify-between mb-8">
+        <h1 class="text-3xl font-bold tracking-tight">AI Assistant</h1>
+
+        <button
+          id="themeToggle"
+          class="p-2 rounded-lg hover:bg-zinc-800 focus:outline-none focus:ring"
+          title="Toggle theme"
+        >
+          <!-- sun / rays icon -->
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path
+              d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.95-7.95l-1.414 1.414M7.464 16.536l-1.414 1.414m0-11.314 1.414 1.414m11.314 11.314-1.414-1.414"
+            />
+          </svg>
+        </button>
+      </header>
+
+      <!-- API-key gate -->
+      <section
+        id="keyPanel"
+        class="w-full max-w-md bg-zinc-800/60 backdrop-blur rounded-2xl p-6 shadow-xl slide-in"
+      >
+        <h2 class="text-xl font-semibold mb-4">Enter your OpenAI API Key</h2>
+        <input
+          id="apiKeyInput"
+          type="password"
+          placeholder="sk-..."
+          class="w-full p-3 rounded-lg bg-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+        />
+        <button
+          id="saveKeyBtn"
+          class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-transform p-3 rounded-lg font-medium"
+        >
+          Save &amp; Continue
+        </button>
+        <p class="text-xs text-zinc-400 mt-3">
+          Key is stored only in your browser's local storage.
+        </p>
+      </section>
+
+      <!-- Chat -->
+      <section
+        id="chatPanel"
+        class="w-full max-w-4xl bg-zinc-800/60 backdrop-blur rounded-2xl p-6 shadow-xl flex flex-col hidden h-[70vh]"
+      >
+        <div id="messages" class="flex-1 overflow-y-auto space-y-4 pr-2"></div>
+
+        <form id="chatForm" class="mt-4 flex gap-2 items-end">
+          <textarea
+            id="userInput"
+            rows="1"
+            placeholder="Ask me anything..."
+            class="flex-1 resize-none p-3 rounded-lg bg-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+          ></textarea>
+
+          <button
+            type="submit"
+            id="sendBtn"
+            class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-transform p-3 rounded-lg font-medium"
+          >
+            Send
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <!-- ============ JS LOGIC ============ -->
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        /* ---------- element refs ---------- */
+        const keyPanel = document.getElementById("keyPanel");
+        const chatPanel = document.getElementById("chatPanel");
+        const apiKeyInput = document.getElementById("apiKeyInput");
+        const saveKeyBtn = document.getElementById("saveKeyBtn");
+        const userInput = document.getElementById("userInput");
+        const chatForm = document.getElementById("chatForm");
+        const messages = document.getElementById("messages");
+        const sendBtn = document.getElementById("sendBtn");
+        const previewPanel = document.getElementById("previewPanel");
+        const previewFrame = document.getElementById("previewFrame");
+        const closePreviewBtn = document.getElementById("closePreviewBtn");
+        document.getElementById("themeToggle").onclick = toggleTheme;
+
+        /* ---------- UX niceties ---------- */
+        // grow textarea as user types
+        userInput.addEventListener("input", () => {
+          userInput.style.height = "auto";
+          userInput.style.height = userInput.scrollHeight + "px";
+        });
+
+        // if key exists already, jump straight to chat
+        if (localStorage.getItem("openai_key")) {
+          keyPanel.classList.add("hidden");
+          chatPanel.classList.remove("hidden");
+        }
+
+        saveKeyBtn.onclick = () => {
+          const k = apiKeyInput.value.trim();
+          if (!k.startsWith("sk-")) {
+            alert("Please enter a valid OpenAI API key");
+            return;
+          }
+          localStorage.setItem("openai_key", k);
+          keyPanel.classList.add("hidden");
+          chatPanel.classList.remove("hidden");
+          userInput.focus();
+        };
+
+        /* ---------- helper: render & preview code ---------- */
+        function renderCodeBlock(code) {
+          const pre = document.createElement("pre");
+          pre.className =
+            "bg-zinc-900/70 rounded-lg p-4 overflow-auto text-sm";
+          const codeEl = document.createElement("code");
+          codeEl.className = "language-html";
+          codeEl.textContent = code;
+          pre.appendChild(codeEl);
+          if (window.hljs) {
+            hljs.highlightElement(codeEl);
+          } else {
+            document.addEventListener("DOMContentLoaded", () =>
+              hljs.highlightElement(codeEl)
+            );
+          }
+          return pre;
+        }
+
+        function openHtmlPreview(code) {
+          previewFrame.srcdoc = code;
+          previewPanel.classList.remove("hidden");
+          // kick off slide-in after next paint
+          setTimeout(() => previewPanel.classList.add("panel-open"), 10);
+        }
+        function closePreview() {
+          previewPanel.classList.remove("panel-open");
+          setTimeout(() => previewPanel.classList.add("hidden"), 300);
+        }
+        closePreviewBtn.onclick = closePreview;
+
+        /* ---------- chat bubble renderer ---------- */
+        function appendMessage(role, text) {
+          const bubble = document.createElement("div");
+          bubble.className = `max-w-[85%] rounded-2xl px-4 py-3 shadow ${
+            role === "user"
+              ? "self-end bg-emerald-600 text-white"
+              : "self-start bg-zinc-700 text-zinc-100"
+          }`;
+
+          // look for ```html code blocks
+          const codeMatch = text.match(/```html[\\s\\S]*?```/i);
+          if (codeMatch) {
+            const code = codeMatch[0].replace(/```html|```/gi, "").trim();
+            const before = text.split(codeMatch[0])[0].trim();
+            const after = text.split(codeMatch[0])[1]?.trim();
+
+            if (before) bubble.appendChild(document.createTextNode(before + "\n"));
+            bubble.appendChild(renderCodeBlock(code));
+            if (after) bubble.appendChild(document.createTextNode("\n" + after));
+
+            // preview button
+            const preview = document.createElement("button");
+            preview.textContent = "Preview";
+            preview.className =
+              "mt-2 text-sm underline text-blue-400 hover:text-blue-300";
+            preview.onclick = () => openHtmlPreview(code);
+            bubble.appendChild(preview);
+          } else {
+            bubble.textContent = text;
+          }
+
+          messages.appendChild(bubble);
+          messages.scrollTop = messages.scrollHeight;
+        }
+
+        /* ---------- call OpenAI ---------- */
+        async function callOpenAI(prompt) {
+          const key = localStorage.getItem("openai_key");
+          try {
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${key}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-3.5-turbo",
+                messages: [{ role: "user", content: prompt }],
+              }),
+            });
+            if (!res.ok) throw new Error(`API error ${res.status}`);
+            const data = await res.json();
+            return (
+              data.choices?.[0]?.message?.content?.trim() || "(No response)"
+            );
+          } catch (e) {
+            console.error(e);
+            return "Error: " + e.message;
+          }
+        }
+
+        function bounce() {
+          sendBtn.classList.add("animate-bounce");
+          setTimeout(() => sendBtn.classList.remove("animate-bounce"), 700);
+        }
+
+        /* ---------- form submit ---------- */
+        chatForm.onsubmit = async (e) => {
+          e.preventDefault();
+          const prompt = userInput.value.trim();
+          if (!prompt) return;
+
+          appendMessage("user", prompt);
+          userInput.value = "";
+          userInput.style.height = "auto";
+          userInput.focus();
+
+          bounce();
+
+          appendMessage("assistant", "…");
+
+          const reply = await callOpenAI(prompt);
+
+          // replace temporary “…” bubble
+          messages.lastChild.remove();
+          appendMessage("assistant", reply);
+        };
+      });
+    </script>
+  </body>
+</html>
